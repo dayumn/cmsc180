@@ -61,6 +61,8 @@ int main(int argc, char *argv[]) {
 
     struct timespec time_before, time_after;
 
+    printf("Starting %s\n", s == 0 ? "Master" : "Slave");
+
     // ==========================================
     // MASTER LOGIC
     // ==========================================
@@ -134,6 +136,8 @@ int main(int argc, char *argv[]) {
             fclose(cfg);
         }
 
+        printf("SLAVE: Waiting for master");
+
         // (3) b. Wait for master to initiate open port communication by listening [cite: 34]
         int server_fd = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in address;
@@ -155,8 +159,23 @@ int main(int argc, char *argv[]) {
         // (3) c. When master has initiated, take note of time_before [cite: 36]
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
-        // Assume t is known or read via config. Hardcoding for standard t=2 test:
-        int t = 2; 
+        // Assume t is known or read via config
+        int t = 4; 
+        
+        // Use an environment variable to bypass NFS sync delays
+        char *env_t = getenv("SLAVE_T");
+        if (env_t) {
+            t = atoi(env_t);
+        } else {
+            FILE *cfg_m = fopen("config_master.txt", "r");
+            if (cfg_m) {
+                fscanf(cfg_m, "%d", &t);
+                fclose(cfg_m);
+            } else {
+                printf("SLAVE ERROR: Could not open config_master.txt and SLAVE_T not set.\n");
+            }
+        }
+        
         int rows_per_slave = n / t;
 
         // Allocate local submatrix
