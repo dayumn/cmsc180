@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Remove previous results
-rm -f results.csv
+rm -f results_affine.csv
 
 echo "Compiling..."
-gcc -O3 lab04.c -o lab04 -Wall
+gcc -O3 lab04_coreaffine.c -o lab04 -Wall
 
-CSV_FILE="results.csv"
+CSV_FILE="results_affine.csv"
 echo "n,t,Run 1,Run 2,Run 3,Average" > $CSV_FILE
 
 # The master is on local machine as well
