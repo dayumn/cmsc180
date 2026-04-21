@@ -1,0 +1,6 @@
+Starting Slave Rank 6...
+Configured to expect data originating from Master IP: 10.0.4.35
+--- Rank 6 Received (2000x16000) [Skipped printing numbers, matrix too large] ---
+--- Rank 6 Sent to Rank 14 (1000x16000) [Skipped printing numbers, matrix too large] ---
+--- Rank 6 Retained (1000x16000) [Skipped printing numbers, matrix too large] ---
+0.114370

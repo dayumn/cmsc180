@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-// Helper to safely print the matrix without freezing the terminal on large inputs
+// Helper to print the matrix contents
 void print_matrix(const char* title, double **matrix, int rows, int cols) {
     if (cols > 16 || rows > 16) {
         printf("--- %s (%dx%d) [Skipped printing numbers, matrix too large] ---\n", title, rows, cols);
@@ -73,7 +73,6 @@ int main(int argc, char *argv[]) {
     int n, p, s;
     
     // Read n, p, and s as user inputs [cite: 20]
-    printf("Enter n (size), p (port), and s (0=Master, 1=Slave): ");
     if (scanf("%d %d %d", &n, &p, &s) != 3) {
         printf("Invalid input.\n");
         return 1;
@@ -237,6 +236,11 @@ int main(int argc, char *argv[]) {
             current_rows = start_row; 
             gap *= 2;
         }
+
+        // --- ADDED PRINT STATEMENT ---
+        char final_title[64];
+        sprintf(final_title, "Rank %d Retained", rank);
+        print_matrix(final_title, local_M, current_rows, n);
 
         // f. Take note of time_after [cite: 42]
         clock_gettime(CLOCK_MONOTONIC, &time_after);
