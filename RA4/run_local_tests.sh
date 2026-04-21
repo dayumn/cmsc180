@@ -10,7 +10,7 @@ CSV_FILE="results.csv"
 echo "n,t,Run 1,Run 2,Run 3,Average" > $CSV_FILE
 
 # The master is on local machine as well
-echo "10.0.4.141" > config_master.txt
+echo "10.0.4.35" > config_master.txt
 
 total_start=$(date +%s)
 
@@ -21,7 +21,7 @@ for n in 4000 8000 16000; do
         # Create config_slaves.txt dynamically
         echo "$t" > config_slaves.txt
         for ((i=1; i<=t; i++)); do
-            echo "10.0.4.141 $((8000+i))" >> config_slaves.txt
+            echo "10.0.4.35 $((8000+i))" >> config_slaves.txt
         done
         
         runs=()
