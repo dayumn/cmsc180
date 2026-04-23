@@ -167,12 +167,16 @@ int main(int argc, char *argv[]) {
         // d. Take note of the system time time_before [cite: 26]
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
+        // Create a TCP socket
         int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+        // Prepare the server address structure. IPV4, converts ports and string ips into bytes / binary ips
         struct sockaddr_in serv_addr;
         serv_addr.sin_family = AF_INET;
         serv_addr.sin_port = htons(ports[0]); 
         inet_pton(AF_INET, ips[0], &serv_addr.sin_addr);
 
+        // Initiate 3 way handshake to slave 0 
         if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
             perror("Connection Failed"); exit(1);
         }
@@ -224,26 +228,29 @@ int main(int argc, char *argv[]) {
         
         printf("Configured to expect data originating from Master IP: %s\n", master_ip);
 
-        // Wait for parent/master to initiate communication by listening [cite: 34]
+
+
+        // Wait for parent/master to initiate communication by listening
         int server_fd = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in address;
         int opt = 1;
         setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
         
+        // Bind to the port of the current slave
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = INADDR_ANY; 
         address.sin_port = htons(p);
 
         bind(server_fd, (struct sockaddr *)&address, sizeof(address));
-        listen(server_fd, 3);
+        listen(server_fd, 3); // Marks socket as passive
 
         int addrlen = sizeof(address);
-        int parent_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
+        int parent_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen); // Blocks until parent connects
 
-        // c. When initiated, take note of time_before [cite: 36]
+        // c. When initiated, take note of time_before 
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
-        // d. Receive the submatrix assigned to it [cite: 37]
+        // d. Receive the submatrix assigned to it
         int current_rows;
         recv(parent_socket, &current_rows, sizeof(int), 0);
 
