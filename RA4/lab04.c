@@ -56,6 +56,46 @@ int get_highest_power_of_2(int num) {
     return p / 2;
 }
 
+// create matrix from input file
+double** createMatFromFile(int n, const char* filename){
+
+    double **matrix = (double**)malloc(n*sizeof(double*));
+
+    for (int i = 0; i < n; i++){
+        matrix[i] = (double*)malloc(n*sizeof(double));
+    }
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp){
+        printf("Error: could not open %s\n", filename);
+        exit(1);
+    }
+
+    // skip the first two lines (n and t already read)
+    int dummy;
+    fscanf(fp, "%d", &dummy);
+    fscanf(fp, "%d", &dummy);
+
+    // read comma-separated matrix values
+    for (int i = 0; i < n; i++){
+        for (int j = 0; j < n; j++){
+            if (fscanf(fp, "%lf", &matrix[i][j]) != 1){
+                printf("Error reading matrix at [%d][%d]\n", i, j);
+                fclose(fp);
+                exit(1);
+            }
+            // consume comma separator if present
+            int ch = fgetc(fp);
+            if (ch != ',' && ch != EOF){
+                ungetc(ch, fp);
+            }
+        }
+    }
+    fclose(fp);
+
+    return matrix;
+}
+
 // Create random matrix function 
 double** createMat(int n){
     double **matrix = (double**)malloc(n * sizeof(double*));
@@ -76,6 +116,22 @@ int main(int argc, char *argv[]) {
     if (scanf("%d %d %d", &n, &p, &s) != 3) {
         printf("Invalid input.\n");
         return 1;
+    }
+
+    // --- HARDCODED FILE MODE FLAG ---
+    // Change to 0 for random matrix, 1 to read from input.txt
+    int file_mode = 0; 
+
+    if (file_mode) {
+        // Read n from the input file to ensure we allocate exactly what input.txt specifies
+        FILE *fp = fopen("input.txt", "r");
+        if (fp) {
+            fscanf(fp, "%d", &n);
+            fclose(fp);
+        } else {
+            printf("Error: could not open input.txt\n");
+            return 1;
+        }
     }
 
     struct timespec time_before, time_after;
@@ -100,8 +156,13 @@ int main(int argc, char *argv[]) {
     if (s == 0) {
         printf("Starting Master...\n");
         
-        // a. Create non-zero n x n square matrix M [cite: 22]
-        double **M = createMat(n);
+        // a. Create n x n square matrix M 
+        double **M;
+        if (file_mode) {
+            M = createMatFromFile(n, "input.txt");
+        } else {
+            M = createMat(n);
+        }
         
         // d. Take note of the system time time_before [cite: 26]
         clock_gettime(CLOCK_MONOTONIC, &time_before);
@@ -125,9 +186,12 @@ int main(int argc, char *argv[]) {
         // --- ADDED PRINT STATEMENT ---
         print_matrix("Master Sent to Slave 0", M, n, n);
 
-        // Wait for the cascading acknowledgment "ack" from the tree
-        char ack[4] = {0};
-        recv(sock, ack, 3, 0);
+        // Wait for the gathered matrix from Slave 0
+        for (int r = 0; r < n; r++) {
+            recv_row(sock, M[r], n * sizeof(double));
+        }
+        
+        print_matrix("Master Gathered from Slave 0", M, n, n);
         close(sock);
 
         // f. Take note of the system time time_after [cite: 31]
@@ -199,6 +263,7 @@ int main(int argc, char *argv[]) {
         // ROUTING PHASE: Shifted Binomial Tree Broadcast
         // ----------------------------------------------------
         int gap = (rank == 0) ? 1 : (get_highest_power_of_2(rank) * 2);
+        int original_rows = current_rows;
 
         while (rank + gap < t) {
             int target_rank = rank + gap;
@@ -228,9 +293,15 @@ int main(int argc, char *argv[]) {
             // Passing local_M + start_row shifts the pointer to the subset of rows we just sent
             print_matrix(send_title, local_M + start_row, rows_to_send, n);
 
-            // Wait for acknowledgment from child
-            char ack[4] = {0};
-            recv(sock, ack, 3, 0);
+            // Wait for processed chunk back from child
+            for (int r = start_row; r < current_rows; r++) {
+                recv_row(sock, local_M[r], n * sizeof(double));
+            }
+            
+            char gather_title[64];
+            sprintf(gather_title, "Rank %d Gathered from Rank %d", rank, target_rank);
+            print_matrix(gather_title, local_M + start_row, rows_to_send, n);
+
             close(sock);
 
             current_rows = start_row; 
@@ -245,8 +316,15 @@ int main(int argc, char *argv[]) {
         // f. Take note of time_after [cite: 42]
         clock_gettime(CLOCK_MONOTONIC, &time_after);
 
-        // e. Send acknowledgment "ack" back up the tree [cite: 41]
-        send(parent_socket, "ack", 3, 0);
+        // e. Send gathered chunks back up the tree [cite: 41]
+        for (int r = 0; r < original_rows; r++) {
+            send_row(parent_socket, local_M[r], n * sizeof(double));
+        }
+        
+        char return_title[64];
+        sprintf(return_title, "Rank %d Returned to Parent", rank);
+        print_matrix(return_title, local_M, original_rows, n);
+
         close(parent_socket);
         close(server_fd);
 
