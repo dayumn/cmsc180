@@ -1,0 +1,39 @@
+Here is a comprehensive breakdown of what Research Activity 5 (RA5) aims to achieve, how it builds on your previous work, and what the step-by-step process looks like.
+
+### The Progression: Combining RA1 through RA4
+To understand RA5, we have to look at the narrative of your previous labs:
+*   **RA1 (The Baseline):** You implemented the mathematical Min-Max Transformation (MMT) of matrix columns on a single machine sequentially.
+*   **RA2 & RA3 (Shared Memory Parallelism):** You optimized the MMT using `pthreads` to run concurrently on multiple CPU cores, and then bound those threads to specific cores (core affinity) to prevent the OS from inefficiently swapping contexts. 
+*   **RA4 (Distributed Memory Routing):** You shifted to a distributed network (LAN). You built a Master-Slave topology using TCP sockets and a **Shifted Binomial Tree (SBT)** for efficient routing. However, in RA4, you *only* routed the data. The Master sent out chunks of the matrix (One-to-Many Personalized Broadcast), and the slaves routed it back, entirely skipping the actual MMT computation to measure pure network overhead.
+
+### What RA5 Aims to Do
+**RA5 is the culmination of the course.** It marries the MMT computation from RA1 with the SBT distributed network topology from RA4. 
+
+Instead of just bouncing data around the network, the slave nodes will actually process the MMT on the chunks of data they receive before returning them.
+
+#### Step-by-Step Process in RA5
+1.  **The Scatter (1MPB - One-to-Many Personalized Broadcast):** 
+    The Master creates the initial Matrix `X`. It sends chunks of rows down the Shifted Binomial Tree. Slaves receive their chunks and forward half of it to their child slaves. This is currently working in your `lab05.c` file.
+2.  **The Computation (MMT):** 
+    Once a slave determines the final chunk of rows it is responsible for (its "retained" chunk), it stops routing and starts computing. It will apply the RA1 Min-Max algorithm finding the min and max for each column *within its specific chunk*, and scale the values into a transformed matrix `T`.
+3.  **Strict Timing:** 
+    Unlike the Master (which times the whole process), the instructions strictly state that **slaves must only time the actual computation**. You'll start the clock exactly when the MMT math begins and stop it the moment the math ends. This isolates CPU computation time from network transmission latency.
+4.  **The Gather (M1PR - Many-to-One Personalized Reduction):**
+    Once the slaves finish their math, they send their transformed chunk back up the tree to their parent, accumulating chunks along the way, until the Master receives all the pieces and rebuilds the final transformed matrix `T`.
+
+### Demystifying "Many-to-One Personalized Reduction (M1PR)"
+The M1PR is effectively a **Gather** operation. Let's break down the semantics:
+*   **Many-to-One:** Data is flowing from many leaf/slave nodes back up to a single root/master node.
+*   **Personalized:** The data isn't a broadcast where everyone holds the same value; every slave holds a *unique, personalized* chunk of the matrix. 
+*   **Reduction:** In parallel computing, a reduction gathers scattered data to reconstruct a consolidated result. While some reductions combine data via addition or multiplication, this is an array-concatenation reduction—piecing the matrix back together in the correct order. 
+
+In your current `lab05.c`, the routing loop that waits for child processes and utilizes `recv_row` to stitch rows back into the `local_M` matrix before passing it to `parent_socket` is the M1PR structure.
+
+### Next Steps for Implementation
+To satisfy the RA5 PDF instructions, we need to apply the following edits to `lab05.c`:
+
+1.  **Inject the Math:** Insert the RA1 MMT algorithm into the Slave logic block, right after it has finished the "Routing Phase" and knows its final `current_rows`. 
+2.  **Adjust the Clocks:** Move the `clock_gettime(CLOCK_MONOTONIC, &time_before)` inside the slave so it executes *right before* the math loop, and keep `time_after` *right after* the math loop.
+3.  **Clean up Print Statements:** The PDF expects a specific output format for the testing scripts (the `printf("%.6f\n", time_elapsed);`). We'll likely need to ensure the custom `print_matrix` statements don't corrupt the automated CSV logging during testing.
+
+Shall I proceed with editing `lab05.c` to implement these three steps?
