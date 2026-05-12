@@ -16,7 +16,7 @@
 # Error handling is done explicitly per command instead.
 
 # ------- USER CONFIGURATION -------
-MASTER_IP="10.0.4.143"     # <-- Set to THIS machine's LAN IP
+MASTER_IP="10.0.4.114"     # <-- Set to THIS machine's LAN IP
 SSH_USER="acer"           # <-- SSH username on all slave PCs
 SSH_PASS="useruser"       # Password for all slave PCs
 BINARY="./lab05_coreaffine"  # Compiled binary (must be in current dir)
@@ -33,16 +33,16 @@ SCP="sshpass -p ${SSH_PASS} scp -o StrictHostKeyChecking=no"
 
 # 4 slave PCs (round-robin: rank r -> PC index r%4)
 SLAVE_IPS=(
-    "10.0.4.51"
-    "10.0.4.144"
-    "10.0.4.137"
-    "10.0.4.164"
+    "10.0.4.163"
+    "10.0.4.41"
+    "10.0.4.77"
+    "10.0.4.89"
 )
 
 # Port for slave rank r = BASE_PORT + r + 1  (ranks 0-15 -> ports 5001-5016)
 BASE_PORT=5000
 
-N_VALUES=(4000 8000 16000)
+N_VALUES=(16000)
 T_VALUES=(2 4 8 16)
 RUNS=3
 

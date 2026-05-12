@@ -46,7 +46,11 @@ void recv_row(int socket, double *row, size_t length_in_bytes) {
     char *ptr = (char*)row;
     while (bytes_received < length_in_bytes) {
         ssize_t res = recv(socket, ptr + bytes_received, length_in_bytes - bytes_received, 0);
-        if (res <= 0) { perror("Network recv failed"); exit(1); }
+        if (res == 0) {
+            fprintf(stderr, "Network recv failed: peer closed connection\n");
+            exit(1);
+        }
+        if (res < 0) { perror("Network recv failed"); exit(1); }
         bytes_received += res;
     }
 }
@@ -63,9 +67,11 @@ int get_highest_power_of_2(int num) {
 double** createMatFromFile(int n, const char* filename){
 
     double **matrix = (double**)malloc(n*sizeof(double*));
+    if (!matrix) { perror("malloc failed"); exit(1); }
 
     for (int i = 0; i < n; i++){
         matrix[i] = (double*)malloc(n*sizeof(double));
+        if (!matrix[i]) { perror("malloc failed"); exit(1); }
     }
 
     FILE *fp = fopen(filename, "r");
@@ -102,8 +108,10 @@ double** createMatFromFile(int n, const char* filename){
 // Create random matrix function 
 double** createMat(int n){
     double **matrix = (double**)malloc(n * sizeof(double*));
+    if (!matrix) { perror("malloc failed"); exit(1); }
     for (int i = 0; i < n; i++){
         matrix[i] = (double*)malloc(n * sizeof(double));
+        if (!matrix[i]) { perror("malloc failed"); exit(1); }
         for (int j = 0; j < n; j++){
             matrix[i][j] = (double)(rand() % 100 + 1);
         }
@@ -334,8 +342,10 @@ int main(int argc, char *argv[]) {
 
         // Allocate local memory block based on what was received
         double **local_M = (double**)malloc(current_rows * sizeof(double*));
+        if (!local_M) { perror("malloc failed"); exit(1); }
         for (int r = 0; r < current_rows; r++) {
             local_M[r] = (double*)malloc(n * sizeof(double));
+            if (!local_M[r]) { perror("malloc failed"); exit(1); }
             recv_row(parent_socket, local_M[r], n * sizeof(double));
         }
 
