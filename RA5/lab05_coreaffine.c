@@ -22,7 +22,7 @@ void print_matrix(const char* title, double **matrix, int rows, int cols) {
     printf("--- %s (%dx%d) ---\n", title, rows, cols);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            printf("%6.0f ", matrix[i][j]);
+            printf("%8.4f ", matrix[i][j]);
         }
         printf("\n");
     }
@@ -54,6 +54,7 @@ void recv_row(int socket, double *row, size_t length_in_bytes) {
         bytes_received += res;
     }
 }
+
 
 // Function to find the highest power of 2 less than or equal to a number
 int get_highest_power_of_2(int num) {
@@ -215,6 +216,7 @@ int main(int argc, char *argv[]) {
         if (rank == -1) { printf("Slave port %d not found in config!\n", p); exit(1); }
     }
 
+    // AFFINITY HERE (t > cores)
 #ifdef __linux__
     // ---------------------------------------------------------
     // AUTOMATIC CORE AFFINITY
@@ -283,14 +285,26 @@ int main(int argc, char *argv[]) {
             send_row(sock, M[r], n * sizeof(double));
         }
 
+        printf("--- Original Randomized Matrix ---\n");
+        print_matrix("Master Initial Matrix", M, n, n);
+
         if (debug) {
             print_matrix("Master Sent to Slave 0", M, n, n);
         }
 
         // Wait for the gathered matrix from Slave 0
-        for (int r = 0; r < n; r++) {
-            recv_row(sock, M[r], n * sizeof(double));
+        int recv_cols = 0;
+        recv(sock, &recv_cols, sizeof(int), 0);
+        if (recv_cols != n) {
+            printf("Error: expected %d cols, got %d\n", n, recv_cols);
+            exit(1);
         }
+        for (int r = 0; r < n; r++) {
+            recv_row(sock, M[r], recv_cols * sizeof(double));
+        }
+
+        printf("--- Final Transformed Matrix ---\n");
+        print_matrix("Master Final Matrix", M, n, n);
 
         if (debug) {
             print_matrix("Master Gathered from Slave 0", M, n, n);
@@ -336,115 +350,125 @@ int main(int argc, char *argv[]) {
         int addrlen = sizeof(address);
         int parent_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen); // Blocks until parent connects
 
-        // d. Receive the submatrix assigned to it
-        int current_rows;
-        recv(parent_socket, &current_rows, sizeof(int), 0);
+        // d. Receive the submatrix assigned to it (column block)
+        int current_cols;
+        recv(parent_socket, &current_cols, sizeof(int), 0);
 
+        // OVERHEAD HERE
         // Allocate local memory block based on what was received
-        double **local_M = (double**)malloc(current_rows * sizeof(double*));
+        double **local_M = (double**)malloc(n * sizeof(double*));
         if (!local_M) { perror("malloc failed"); exit(1); }
-        for (int r = 0; r < current_rows; r++) {
-            local_M[r] = (double*)malloc(n * sizeof(double));
+        for (int r = 0; r < n; r++) {
+            local_M[r] = (double*)malloc(current_cols * sizeof(double));
             if (!local_M[r]) { perror("malloc failed"); exit(1); }
-            recv_row(parent_socket, local_M[r], n * sizeof(double));
+            recv_row(parent_socket, local_M[r], current_cols * sizeof(double));
         }
 
         if (debug) {
             char recv_title[64];
             sprintf(recv_title, "Rank %d Received", rank);
-            print_matrix(recv_title, local_M, current_rows, n);
+            print_matrix(recv_title, local_M, n, current_cols);
         }
 
         // ----------------------------------------------------
         // ROUTING PHASE: Shifted Binomial Tree Broadcast
         // ----------------------------------------------------
         int gap = (rank == 0) ? 1 : (get_highest_power_of_2(rank) * 2);
-        int original_rows = current_rows;
+        int original_cols = current_cols;
 
         while (rank + gap < t) {
             int target_rank = rank + gap;
-            int rows_to_send = current_rows / 2; // Divide submatrices
-            int start_row = current_rows - rows_to_send;
+            int cols_to_send = current_cols / 2; // Divide submatrices
+            int start_col = current_cols - cols_to_send;
 
+            // TCP HERE
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             struct sockaddr_in serv_addr;
             serv_addr.sin_family = AF_INET;
             serv_addr.sin_port = htons(ports[target_rank]);
             inet_pton(AF_INET, ips[target_rank], &serv_addr.sin_addr);
 
+            // IDLE HERE
             // Retry connection in case target slave hasn't reached accept() yet
             while (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
                 usleep(10000);
             }
 
             // Forward the chunk
-            send(sock, &rows_to_send, sizeof(int), 0);
-            for (int r = start_row; r < current_rows; r++) {
-                send_row(sock, local_M[r], n * sizeof(double));
+            send(sock, &cols_to_send, sizeof(int), 0);
+            for (int r = 0; r < n; r++) {
+                send_row(sock, &local_M[r][start_col], cols_to_send * sizeof(double));
             }
 
             if (debug) {
                 char send_title[64];
                 sprintf(send_title, "Rank %d Sent to Rank %d", rank, target_rank);
-                // Passing local_M + start_row shifts the pointer to the subset of rows we just sent
-                print_matrix(send_title, local_M + start_row, rows_to_send, n);
+                print_matrix(send_title, local_M, n, current_cols);
             }
 
+            // BLOCKING HERE
             // Wait for processed chunk back from child
-            for (int r = start_row; r < current_rows; r++) {
-                recv_row(sock, local_M[r], n * sizeof(double));
+            for (int r = 0; r < n; r++) {
+                recv_row(sock, &local_M[r][start_col], cols_to_send * sizeof(double));
             }
 
             if (debug) {
                 char gather_title[64];
                 sprintf(gather_title, "Rank %d Gathered from Rank %d", rank, target_rank);
-                print_matrix(gather_title, local_M + start_row, rows_to_send, n);
+                print_matrix(gather_title, local_M, n, current_cols);
             }
 
             close(sock);
 
-            current_rows = start_row;
+            current_cols = start_col;
             gap *= 2;
         }
 
         if (debug) {
             char final_title[64];
             sprintf(final_title, "Rank %d Retained", rank);
-            print_matrix(final_title, local_M, current_rows, n);
+            print_matrix(final_title, local_M, n, current_cols);
         }
 
         // f. Take note of time_before and time_after for computation only [cite: 42]
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
+        // EXCESS HERE
         // Column-wise major access: transpose retained rows, normalize, then transpose back.
-        double **transposed = transpose_matrix(local_M, current_rows, n);
-        mmt(transposed, current_rows, 0, n);
-        double **normalized = transpose_matrix(transposed, n, current_rows);
+        double **transposed = transpose_matrix(local_M, n, current_cols);
+        mmt(transposed, n, 0, current_cols);
+        double **normalized = transpose_matrix(transposed, current_cols, n);
 
-        for (int r = 0; r < current_rows; r++) {
-            memcpy(local_M[r], normalized[r], n * sizeof(double));
+        for (int r = 0; r < n; r++) {
+            memcpy(local_M[r], normalized[r], current_cols * sizeof(double));
         }
 
-        free_matrix(transposed, n);
-        free_matrix(normalized, current_rows);
+        free_matrix(transposed, current_cols);
+        free_matrix(normalized, n);
+
+        printf("--- Slave %d Result (Transformed Chunk) ---\n", rank);
+        print_matrix("Transformed Chunk", local_M, n, current_cols);
 
         clock_gettime(CLOCK_MONOTONIC, &time_after);
 
         // e. Send gathered chunks back up the tree [cite: 41]
-        for (int r = 0; r < original_rows; r++) {
-            send_row(parent_socket, local_M[r], n * sizeof(double));
+        if (rank == 0) {
+            send(parent_socket, &original_cols, sizeof(int), 0);
+        }
+        for (int r = 0; r < n; r++) {
+            send_row(parent_socket, local_M[r], original_cols * sizeof(double));
         }
 
         if (debug) {
             char return_title[64];
             sprintf(return_title, "Rank %d Returned to Parent", rank);
-            print_matrix(return_title, local_M, original_rows, n);
+            print_matrix(return_title, local_M, n, original_cols);
         }
 
         close(parent_socket);
         close(server_fd);
 
-        free_matrix(local_M, original_rows);
+        free_matrix(local_M, n);
     }
 
     // (4) Obtain elapsed time [cite: 43]
