@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     int n, p, s;
 
-    // Read n, p, and s as user inputs [cite: 20]
+    // Read n, p, and s as user inputs
     if (scanf("%d %d %d", &n, &p, &s) != 3) {
         printf("Invalid input.\n");
         return 1;
@@ -190,12 +190,12 @@ int main(int argc, char *argv[]) {
 
     struct timespec time_before, time_after;
 
-    // Read config file to determine IPs and ports of the slaves [cite: 23]
+    // Read config file to determine IPs and ports of the slaves
     FILE *cfg = fopen("config_slaves.txt", "r");
     if (!cfg) { perror("Cannot open config_slaves.txt"); exit(1); }
 
     int t;
-    fscanf(cfg, "%d", &t); // 't' is the number of slaves [cite: 23]
+    fscanf(cfg, "%d", &t); // 't' is the number of slaves
 
     char ips[t][64];
     int ports[t];
@@ -258,7 +258,7 @@ int main(int argc, char *argv[]) {
             M = createMat(n);
         }
 
-        // d. Take note of the system time time_before [cite: 26]
+        // d. Take note of the system time time_before
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
         // Create a TCP socket
@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
         }
         close(sock);
 
-        // f. Take note of the system time time_after [cite: 31]
+        // f. Take note of the system time time_after
         clock_gettime(CLOCK_MONOTONIC, &time_after);
 
         free_matrix(M, n);
@@ -318,7 +318,7 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Starting Slave Rank %d...\n", rank);
 
-        // a. Read from the configuration file what is the IP address of the master [cite: 33]
+        // a. Read from the configuration file what is the IP address of the master
         FILE *cfg_master = fopen("config_master.txt", "r");
         char master_ip[64];
         if (!cfg_master) {
@@ -426,17 +426,21 @@ int main(int argc, char *argv[]) {
             print_matrix(final_title, local_M, n, current_cols);
         }
 
-        // f. Take note of time_before and time_after for computation only [cite: 42]
+        // Print the received matrix block right before calculating
+        printf("--- Slave %d Received Chunk (Before Computation) ---\n", rank);
+        print_matrix("Received Chunk", local_M, n, current_cols);
+
+        // f. Take note of time_before and time_after for computation only
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
         mmt(local_M, n, 0, current_cols);
 
+        clock_gettime(CLOCK_MONOTONIC, &time_after);
+
         printf("--- Slave %d Result (Transformed Chunk) ---\n", rank);
         print_matrix("Transformed Chunk", local_M, n, current_cols);
 
-        clock_gettime(CLOCK_MONOTONIC, &time_after);
-
-        // e. Send gathered chunks back up the tree [cite: 41]
+        // e. Send gathered chunks back up the tree
         if (rank == 0) {
             send(parent_socket, &original_cols, sizeof(int), 0);
         }
@@ -456,11 +460,11 @@ int main(int argc, char *argv[]) {
         free_matrix(local_M, n);
     }
 
-    // (4) Obtain elapsed time [cite: 43]
+    // (4) Obtain elapsed time
     double time_elapsed = (time_after.tv_sec - time_before.tv_sec)
                         + (time_after.tv_nsec - time_before.tv_nsec) / 1e9;
 
-    // (5) Output time elapsed at each instance's terminal [cite: 44]
+    // (5) Output time elapsed at each instance's terminal
     printf("%.6f\n", time_elapsed);
 
     return 0;
