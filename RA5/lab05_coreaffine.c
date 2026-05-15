@@ -121,27 +121,23 @@ double** createMat(int n){
 }
 
 // mmt function - normalizes columns [col_start, col_end) of the matrix
-void mmt(double **matrix, int m, int col_start, int col_end){
-
+void mmt(double **matrix, int rows, int col_start, int col_end){
     for (int j = col_start; j < col_end; j++){
+        double col_min = matrix[0][j];
+        double col_max = matrix[0][j];
 
-        // after transpose, column j is now row j -> row-major sequential access
-        double col_min = matrix[j][0];
-        double col_max = matrix[j][0];
-
-        for (int i = 1; i < m; i++){
-            if (matrix[j][i] > col_max){
-                col_max = matrix[j][i];
+        for (int i = 1; i < rows; i++){
+            if (matrix[i][j] > col_max){
+                col_max = matrix[i][j];
             }
-            if (matrix[j][i] < col_min){
-                col_min = matrix[j][i];
+            if (matrix[i][j] < col_min){
+                col_min = matrix[i][j];
             }
         }
 
-        // normalize (row j in transposed = column j in original)
-        for (int i = 0; i < m; i++){
+        for (int i = 0; i < rows; i++){
             if (col_max - col_min != 0){
-                matrix[j][i] = (matrix[j][i] - col_min)/(col_max - col_min);
+                matrix[i][j] = (matrix[i][j] - col_min)/(col_max - col_min);
             }
         }
     }
@@ -433,18 +429,7 @@ int main(int argc, char *argv[]) {
         // f. Take note of time_before and time_after for computation only [cite: 42]
         clock_gettime(CLOCK_MONOTONIC, &time_before);
 
-        // EXCESS HERE
-        // Column-wise major access: transpose retained rows, normalize, then transpose back.
-        double **transposed = transpose_matrix(local_M, n, current_cols);
-        mmt(transposed, n, 0, current_cols);
-        double **normalized = transpose_matrix(transposed, current_cols, n);
-
-        for (int r = 0; r < n; r++) {
-            memcpy(local_M[r], normalized[r], current_cols * sizeof(double));
-        }
-
-        free_matrix(transposed, current_cols);
-        free_matrix(normalized, n);
+        mmt(local_M, n, 0, current_cols);
 
         printf("--- Slave %d Result (Transformed Chunk) ---\n", rank);
         print_matrix("Transformed Chunk", local_M, n, current_cols);
